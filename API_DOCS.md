@@ -34,6 +34,7 @@ Request:
       "phone": "+919876543210",
       "first_name": "रमेश",
       "last_name": "कुमार"
+      "language": "hi | en | ta"
     }
 
 Response (200) - OTP Sent:
@@ -81,7 +82,7 @@ Response (200) - Success:
       "first_name": "रमेश",
       "last_name": "कुमार",
       "full_name": "रमेश कुमार",
-      "language": "hi",
+      "language": "hi | en | ta",
       "created_at": "2025-10-22T10:00:00Z"
     }
   }
