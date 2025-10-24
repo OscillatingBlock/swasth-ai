@@ -8,7 +8,7 @@ import (
 )
 
 func GenerateJWTToken(user *models.User, jwtConfig config.JWT) (string, string, error) {
-	return "", "", nil
+	return "access-token", "refresh-token", nil
 }
 
 func ValidateRefreshToken(refreshToken string, jwtConfig config.JWT) (*models.User, error) {

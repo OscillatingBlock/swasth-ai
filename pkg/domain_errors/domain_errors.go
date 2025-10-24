@@ -9,7 +9,7 @@ import (
 // User Domain Errors
 var (
 	ErrInvalidPhoneFormat = errors.New("USER_INVALID_PHONE", "Invalid phone number format. Use +91xxxxxxxxxx", http.StatusBadRequest, nil)
-	ErrPhoneAlreadyExists = errors.New("USER_PHONE_EXISTS", "Phone number already registered", http.StatusConflict, nil)
+	ErrUserAlreadyExists  = errors.New("USER_AlREADY_EXISTS", "Phone number already registered", http.StatusConflict, nil)
 	ErrUserNotFound       = errors.New("USER_NOT_FOUND", "User not found", http.StatusNotFound, nil)
 	ErrInvalidLanguage    = errors.New("USER_INVALID_LANGUAGE", "Unsupported language. Use: hi,en,ta,te,bn,mr", http.StatusUnprocessableEntity, nil)
 

@@ -25,90 +25,121 @@ func NewAuthUsecase(repo auth.UserRepository, otpRepo auth.OTPRepository, cfg co
 	return &AuthUsecase{userRepo: repo, otpRepo: otpRepo, cfg: cfg, logger: logger}
 }
 
-func (uc *AuthUsecase) Register(ctx context.Context, user *models.User) error {
-	domain_errors.ValidateUserPhone(user.Phone)
-
-	// Check if user already exists
-	existingUser, err := uc.userRepo.FindByPhone(ctx, user.Phone)
+func (uc *AuthUsecase) SendOTP(ctx context.Context, phone string) error {
+	// TODO: Implement SMS sending logic
+	err := domain_errors.ValidateUserPhone(phone)
 	if err != nil {
-		uc.logger.Error("Error while finding user (authUC.Register.userRepo.FindByPhone)", "error", err)
-		return appErrors.ErrDatabase
-	}
-	if existingUser != nil {
-		uc.logger.Error("user already exists ", "phone", user.Phone)
-		return appErrors.ErrAlreadyExists
+		uc.logger.Error("error", err)
+		return domain_errors.ErrInvalidPhoneFormat
 	}
 
-	// Create temporary user record (or just store in OTP table)
-	tempUser := &models.User{
-		Phone:     user.Phone,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
+	//Rate limiting , max 3 otp / hour
+	count, err := uc.otpRepo.CountRecent(ctx, phone, time.Now().UTC().Truncate(time.Second))
+	if err != nil {
+		uc.logger.Error("error while getting recent otp count (otpRepo.CountRecent)", "error", err)
+		return appErrors.ErrInternal
 	}
-	tempUser.PrepareCreate()
+	if count >= 3 {
+		return domain_errors.ErrOTPAttemptsExceeded
+	}
 
-	// Generate & store OTP
+	//create and store otp
 	otp := utils.GenerateOTP()
 	expiresAt := time.Now().Add(5 * time.Minute)
 
 	err = uc.otpRepo.Create(ctx, &models.OTP{
-		Phone:     user.Phone,
+		Phone:     phone,
 		OTP:       otp,
-		ExpiresAt: expiresAt.String(),
+		ExpiresAt: expiresAt,
 		Attempts:  0,
+		Verified:  false,
 	})
 	if err != nil {
-		uc.logger.Error("Failed to store OTP (authUC.Register.otpRepo.Create)", "error", err)
-		return domain_errors.ErrInvalidOTP
+		uc.logger.Error("failed to store OTP (authUC.sendSMS.otpRepo.Create)", "error", err)
+		return appErrors.ErrDatabase
 	}
 
-	// Send SMS (integrate with your SMS provider)
-	//NOTE: right now , not sending any real sms just mocking
-	err = uc.sendSMS(user.Phone, fmt.Sprintf("Your OTP is %s. Valid for 5 minutes.", otp))
-	if err != nil {
-		uc.logger.Error("SMS send failed", "error", err)
+	//send sms , mocking for now
+	if err = uc.sendSMS(ctx, fmt.Sprintf("Your OTP is %s. Valid for 5 minutes.", otp), phone); err != nil {
+		uc.logger.Error("failed to send SMS", "error", err)
 		return domain_errors.ErrFailedToSendOTP
 	}
-	uc.logger.Info("OTP sent successfully", "phone", user.Phone)
 	return nil
 }
 
-func (uc *AuthUsecase) sendSMS(phone, message string) error {
-	// TODO: Implement SMS sending logic
-	return nil
-}
+func (uc *AuthUsecase) VerifyOTP(ctx context.Context, phone, otp string) (*models.UserWithToken, bool, error) {
 
-func (uc *AuthUsecase) VerifyOTP(ctx context.Context, phone, otp string) (*models.UserWithToken, error) {
+	// otpRecord, err := uc.otpRepo.FindByPhone(ctx, phone)
+	// if err !=
 
-	//TODO: Implement OTP verification logic
+	// //TODO: Implement OTP verification logic
+	// otpRecord.Verified = true
 
-	// Create or get user
-	user, err := uc.userRepo.FindOrCreate(ctx, &models.User{
-		Phone:     phone,
-		FirstName: "", // Will be updated later or from OTP record
-		LastName:  "",
-	})
+	//check if user already exists
+	existingUser, err := uc.userRepo.FindByPhone(ctx, phone)
 	if err != nil {
-		uc.logger.Error("Failed to create/find user", "error", err)
+		uc.logger.Error("Error while searching user (authUC.VerifyOTP.userRepo.FindByPhone)", "error", err)
+		return nil, false, appErrors.ErrDatabase
+	}
+	if existingUser != nil {
+		// user already exists, generate new token
+		token, refreshToken, err := utils.GenerateJWTToken(existingUser, uc.cfg.JWT)
+		if err != nil {
+			uc.logger.Error("Failed to generate token (authUC.VerifyOTP.GenerateJWTToken)", "error", err)
+			return nil, false, appErrors.ErrJWTGeneration
+		}
+
+		uc.otpRepo.Delete(ctx, otp)
+
+		return &models.UserWithToken{
+			User:         existingUser,
+			Token:        token,
+			RefreshToken: refreshToken,
+		}, true, nil
+	}
+	//signup
+	return nil, false, nil
+}
+
+func (uc *AuthUsecase) RegisterUser(ctx context.Context, input *models.RegisterUserInput) (*models.UserWithToken, error) {
+	existingUser, err := uc.userRepo.FindByPhone(ctx, input.Phone)
+	if err != nil {
+		uc.logger.Error("failed to search user (authUC.RegisterUser.userRepo.FindByPhone)", "error", err)
+		return nil, appErrors.ErrDatabase
+	}
+	if existingUser != nil {
+		uc.logger.Error("user already exists ", "phone", input.Phone)
+		return nil, domain_errors.ErrUserAlreadyExists
+	}
+
+	err = domain_errors.ValidateUserLanguage(input.Language)
+	if err != nil {
+		uc.logger.Error("invalid language", "error", err)
+		return nil, domain_errors.ErrInvalidLanguage
+	}
+
+	//create user
+	user := models.User{
+		FirstName: input.FirstName,
+		LastName:  input.LastName,
+		Phone:     input.Phone,
+		Language:  input.Language,
+	}
+	user.PrepareCreate()
+	createdUser, err := uc.userRepo.Create(ctx, &user)
+	if err != nil {
+		uc.logger.Error("failed to create user (authUC.RegisterUser.userRepo.Create)", "error", err)
 		return nil, appErrors.ErrDatabase
 	}
 
-	// Generate JWT tokens
-	token, refreshToken, err := utils.GenerateJWTToken(user, uc.cfg.JWT)
+	//generate token
+	token, refreshToken, err := utils.GenerateJWTToken(createdUser, uc.cfg.JWT)
 	if err != nil {
-		uc.logger.Error("Token generation failed", "error", err)
+		uc.logger.Error("failed to generate token (authUC.RegisterUser.GenerateJWTToken)", "error", err)
 		return nil, appErrors.ErrJWTGeneration
 	}
-
-	// Delete used OTP
-	err = uc.otpRepo.Delete(ctx, phone)
-	if err != nil {
-		uc.logger.Error("Failed to delete OTP", "error", err)
-		// Non-critical - continue
-	}
-
 	return &models.UserWithToken{
-		User:         user,
+		User:         createdUser,
 		Token:        token,
 		RefreshToken: refreshToken,
 	}, nil
@@ -119,7 +150,7 @@ func (uc *AuthUsecase) RefreshToken(ctx context.Context, refreshToken string) (*
 	claims, err := utils.ValidateRefreshToken(refreshToken, uc.cfg.JWT)
 	if err != nil {
 		uc.logger.Error("Invalid refresh token")
-		return nil, appErrors.ErrUnauthorized
+		return nil, domain_errors.ErrUserNotFound
 	}
 
 	user, err := uc.userRepo.FindByID(ctx, claims.ID)
@@ -200,4 +231,10 @@ func (uc *AuthUsecase) UpdateProfile(ctx context.Context, input *models.UpdatePr
 		return nil, appErrors.ErrDatabase
 	}
 	return updatedUser, nil
+}
+
+func (uc *AuthUsecase) sendSMS(ctx context.Context, message, phone string) error {
+	//TODO: Implement OTP resend logic
+
+	return nil
 }

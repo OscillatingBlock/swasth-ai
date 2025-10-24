@@ -45,3 +45,10 @@ type UpdateProfileInput struct {
 	LastName  string `json:"last_name"`
 	Language  string `json:"language"`
 }
+
+type RegisterUserInput struct {
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Language  string `json:"language"`
+	Phone     string `json:"phone"`
+}
