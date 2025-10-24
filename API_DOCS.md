@@ -1,10 +1,15 @@
 # 🔐 **Arogya Sahayak - NEW AUTHENTICATION APIs**
 
-*Updated with Phone + First Name + Last Name + OTP Verification*
+---
+
+# **Arogya Sahayak - AUTHENTICATION API (Simplified Flow)**
+
+*Phone → OTP → Verify → (Login OR Register)*
 
 ---
 
-## 📱 **Base URLs** (Same as before)
+## **Base URLs**
+
 | Environment | URL |
 |-------------|-----|
 | **Development** | `http://localhost:8080/api/v1` |
@@ -12,137 +17,134 @@
 
 ---
 
-## 🔐 **AUTHENTICATION FLOW**
+## **AUTH FLOW (New Simplified)**
 
 ```
-1. POST /auth/register → Send user details + get OTP
-2. POST /auth/verify → Verify OTP → Get JWT Token
-3. Use JWT for all other APIs
+1. User enters phone → POST /auth/send-otp
+2. OTP sent → User enters OTP → POST /auth/verify-otp
+3. If user exists → Return JWT + user
+   If NOT → Return { "registered": false } → Redirect to Register Page
+4. Register Page → POST /auth/register → Create user + JWT
 ```
 
 ---
 
-## **1. POST /auth/register**
-*Register new user & send OTP*
+## **1. POST /auth/send-otp**
+
+*Send OTP to phone (used for both login & signup)*
 
 ```yaml
 Request:
-  Path: /auth/register
   Headers: { "Content-Type": "application/json" }
   Body:
-    {
-      "phone": "+919876543210",
-      "first_name": "रमेश",
-      "last_name": "कुमार"
-      "language": "hi | en | ta"
-    }
+    { "phone": "+919876543210" }
 
-Response (200) - OTP Sent:
+Response (200):
   {
     "message": "OTP sent to +919876543210",
-    "phone": "+919876543210",
-    "retry_after": 60,
-    "user_id": "temp_123"
+    "retry_after": 60
   }
 
-Response (409) - User Exists:
-  {
-    "message": "User already registered",
-    "phone": "+919876543210"
-  }
+Response (400):
+  { "error": "Invalid phone number format" }
 
-Response (400) - Invalid Phone:
-  {
-    "error": "Invalid phone number format"
-  }
+Response (429):
+  { "error": "Too many requests", "retry_after": 60 }
 ```
 
 ---
 
-## **2. POST /auth/verify**
-*Verify OTP & get JWT Token*
+## **2. POST /auth/verify-otp**
+
+*Verify OTP — decide login vs register*
 
 ```yaml
 Request:
-  Path: /auth/verify
-  Headers: { "Content-Type": "application/json" }
   Body:
     {
       "phone": "+919876543210",
       "otp": "123456"
     }
 
-Response (200) - Success:
+Response (200) - User Exists (Login):
   {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "registered": true,
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "refresh_token": "...",
     "user": {
       "id": "user_123",
       "phone": "+919876543210",
       "first_name": "रमेश",
       "last_name": "कुमार",
-      "full_name": "रमेश कुमार",
-      "language": "hi | en | ta",
-      "created_at": "2025-10-22T10:00:00Z"
+      "language": "hi"
     }
   }
 
-Response (400) - Invalid OTP:
+Response (200) - User NOT Exists (Redirect to Register):
   {
-    "error": "Invalid or expired OTP",
-    "retry_attempts": 2
+    "registered": false,
+    "message": "Complete registration"
   }
 
-Response (429) - Too Many Attempts:
-  {
-    "error": "Too many failed attempts",
-    "retry_after": 300
-  }
+Response (400):
+  { "error": "Invalid or expired OTP" }
+
+Response (429):
+  { "error": "Too many failed attempts", "retry_after": 300 }
 ```
 
 ---
 
-## **3. POST /auth/resend-otp**
-*Resend OTP (if expired/not received)*
+## **3. POST /auth/register**
+
+*Complete registration after OTP verification*
 
 ```yaml
 Request:
-  Path: /auth/resend-otp
-  Headers: { "Content-Type": "application/json" }
   Body:
     {
-      "phone": "+919876543210"
+      "phone": "+919876543210",
+      "first_name": "रमेश",
+      "last_name": "कुमार",
+      "language": "hi"
     }
+
+Response: Only allowed if OTP was verified recently (same phone)
 
 Response (200):
   {
-    "message": "New OTP sent to +919876543210",
-    "retry_after": 60
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "refresh_token": "...",
+    "user": {
+      "id": "user_123",
+      "phone": "+919876543210",
+      "first_name": "रमेश",
+      "last_name": "कुमार",
+      "language": "hi"
+    }
   }
 
-Response (429):
-  {
-    "error": "Please wait before requesting new OTP",
-    "retry_after": 60
-  }
+Response (400):
+  { "error": "Phone not verified with OTP" }
+
+Response (409):
+  { "error": "User already registered" }
 ```
 
 ---
 
 ## **4. POST /auth/refresh**
-*Refresh JWT Token*
+
+*Refresh JWT using refresh token*
 
 ```yaml
 Request:
-  Path: /auth/refresh
-  Headers: 
-    - Authorization: Bearer YOUR_REFRESH_TOKEN
-    - Content-Type: application/json
+  Headers: { "Authorization": "Bearer REFRESH_TOKEN" }
 
 Response (200):
   {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "refresh_token": "...",
     "expires_in": 86400
   }
 ```
@@ -150,12 +152,11 @@ Response (200):
 ---
 
 ## **5. GET /auth/profile**
-*Get current user profile* (Requires JWT)
+
+*Get current user (JWT required)*
 
 ```yaml
-Request:
-  Path: /auth/profile
-  Headers: { "Authorization": "Bearer YOUR_JWT" }
+Headers: { "Authorization": "Bearer JWT" }
 
 Response (200):
   {
@@ -163,66 +164,85 @@ Response (200):
     "phone": "+919876543210",
     "first_name": "रमेश",
     "last_name": "कुमार",
-    "full_name": "रमेश कुमार",
-    "language": "hi",
-    "offline_mode": false,
-    "last_sync": "2025-10-22T10:00:00Z",
-    "created_at": "2025-10-22T10:00:00Z"
+    "language": "hi"
   }
 ```
 
 ---
 
 ## **6. PUT /auth/profile**
-*Update user profile* (Requires JWT)
+
+*Update profile (JWT required)*
 
 ```yaml
-Request:
-  Path: /auth/profile
-  Headers: { "Authorization": "Bearer YOUR_JWT" }
-  Body:
-    {
-      "first_name": "राम",
-      "last_name": "शर्मा",
-      "language": "ta"
-    }
+Body:
+  {
+    "first_name": "राम",
+    "language": "ta"
+  }
 
 Response (200):
-  {
-    "message": "Profile updated successfully",
-    "user": {
-      "id": "user_123",
-      "first_name": "राम",
-      "last_name": "शर्मा",
-      "full_name": "राम शर्मा",
-      "language": "ta"
-    }
-  }
+  { "message": "Profile updated" }
 ```
 
 ---
 
-## 📋 **COMPLETE AUTH FLOW EXAMPLE**
+## **SECURITY & VALIDATION**
 
-```bash
-# Step 1: Register
-curl -X POST http://localhost:8080/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"+919876543210","first_name":"रमेश","last_name":"कुमार"}'
+| Rule | Value |
+|------|-------|
+| **Phone Format** | `+91` followed by 10 digits |
+| **OTP** | 6 digits, valid 5 mins, max 3 attempts |
+| **Rate Limits** | 3 OTPs/hour, 60s cooldown |
+| **JWT** | Access: 24h, Refresh: 7 days |
 
-# Response: {"message":"OTP sent to +919876543210","phone":"+919876543210"}
+---
 
-# Step 2: Verify OTP
-curl -X POST http://localhost:8080/api/v1/auth/verify \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"+919876543210","otp":"123456"}'
+## **DATABASE SCHEMA**
 
-# Response: {"token":"eyJhbGciOiJIUzI1NiIs...","user":{...}}
+```sql
+CREATE TABLE users (
+    id VARCHAR(50) PRIMARY KEY,
+    phone VARCHAR(15) UNIQUE NOT NULL,
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    language VARCHAR(10) DEFAULT 'hi',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-# Step 3: Use token for other APIs
-curl -X GET http://localhost:8080/api/v1/auth/profile \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
+CREATE TABLE otps (
+    id SERIAL PRIMARY KEY,
+    phone VARCHAR(15) UNIQUE NOT NULL,
+    otp VARCHAR(6) NOT NULL,
+    attempts INTEGER DEFAULT 0,
+    expires_at TIMESTAMP NOT NULL,
+    verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
+
+---
+
+## **FRONTEND FLOW**
+
+```mermaid
+graph TD
+    A[Enter Phone] --> B{Send OTP}
+    B --> C[Enter OTP]
+    C --> D{Verify OTP}
+    D -->|Exists| E[Login Success]
+    D -->|Not Exists| F[Go to Register Page]
+    F --> G[Enter Name + Lang]
+    G --> H[Register → Login Success]
+```
+
+---
+
+**Done.**  
+No separate login/signup.  
+One phone → OTP → smart routing.
+
+Let me know if you want the **updated Go usecase code** for this flow!
 
 ---
 
