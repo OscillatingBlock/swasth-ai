@@ -1,0 +1,24 @@
+
+server:
+  port: ":8080"
+  environment: "development"
+
+db:
+  host: "localhost"
+  port: 5432
+  user: "aayush"
+  password: "aayush1000"
+  name: "swasthai"
+  sslmode: "disable"
+
+jwt:
+  secret: "supersecretjwtkey"
+  expiresin: 86400  # in seconds (1 day)
+
+bun:
+  dsn: "postgres://aayush:aayush1000@localhost:5432/swasthai_db?sslmode=disable"
+
+loggerMode:
+  development: true
+  prod: false
+  level: "debug"

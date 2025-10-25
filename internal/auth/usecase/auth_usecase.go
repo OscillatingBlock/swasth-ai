@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -77,10 +78,17 @@ func (uc *AuthUsecase) VerifyOTP(ctx context.Context, phone, otp string) (*model
 
 	//check if user already exists
 	existingUser, err := uc.userRepo.FindByPhone(ctx, phone)
+
 	if err != nil {
-		uc.logger.Error("Error while searching user (authUC.VerifyOTP.userRepo.FindByPhone)", "error", err)
-		return nil, false, appErrors.ErrDatabase
+		if errors.Is(err, domain_errors.ErrUserNotFound) {
+			// user does not exist → continue to signup
+			existingUser = nil
+		} else {
+			uc.logger.Error("Error while searching user (authUC.VerifyOTP.userRepo.FindByPhone)", "error", err)
+			return nil, false, appErrors.ErrDatabase
+		}
 	}
+
 	if existingUser != nil {
 		// user already exists, generate new token
 		token, refreshToken, err := utils.GenerateJWTToken(existingUser, uc.cfg.JWT)
@@ -103,12 +111,13 @@ func (uc *AuthUsecase) VerifyOTP(ctx context.Context, phone, otp string) (*model
 
 func (uc *AuthUsecase) RegisterUser(ctx context.Context, input *models.RegisterUserInput) (*models.UserWithToken, error) {
 	existingUser, err := uc.userRepo.FindByPhone(ctx, input.Phone)
-	if err != nil {
+
+	if err != nil && !errors.Is(err, domain_errors.ErrUserNotFound) {
 		uc.logger.Error("failed to search user (authUC.RegisterUser.userRepo.FindByPhone)", "error", err)
 		return nil, appErrors.ErrDatabase
 	}
 	if existingUser != nil {
-		uc.logger.Error("user already exists ", "phone", input.Phone)
+		uc.logger.Error("user already exists", "phone", input.Phone)
 		return nil, domain_errors.ErrUserAlreadyExists
 	}
 
@@ -146,28 +155,21 @@ func (uc *AuthUsecase) RegisterUser(ctx context.Context, input *models.RegisterU
 }
 
 func (uc *AuthUsecase) RefreshToken(ctx context.Context, refreshToken string) (*models.Tokens, error) {
-
-	claims, err := utils.ValidateRefreshToken(refreshToken, uc.cfg.JWT)
+	user, err := utils.ValidateRefreshToken(refreshToken, uc.cfg.JWT)
 	if err != nil {
-		uc.logger.Error("Invalid refresh token")
-		return nil, domain_errors.ErrUserNotFound
+		uc.logger.Error("Invalid refresh token", "error", err)
+		return nil, appErrors.ErrUnauthorized
 	}
 
-	user, err := uc.userRepo.FindByID(ctx, claims.ID)
+	newToken, newRefreshToken, err := utils.GenerateJWTToken(user, uc.cfg.JWT)
 	if err != nil {
-		uc.logger.Error("Failed to find user (authUC.RefreshToken.FindByID)", "error", err)
-		return nil, appErrors.ErrDatabase
-	}
-
-	newToken, refreshToken, err := utils.GenerateJWTToken(user, uc.cfg.JWT)
-	if err != nil {
-		uc.logger.Error("Failed to generate new token (authUC.RefreshToken.GenerateJWTToken)", "error", err)
+		uc.logger.Error("Failed to generate new tokens", "error", err)
 		return nil, appErrors.ErrJWTGeneration
 	}
 
 	return &models.Tokens{
 		Token:        newToken,
-		RefreshToken: refreshToken,
+		RefreshToken: newRefreshToken,
 		ExpiresIn:    86400,
 	}, nil
 }

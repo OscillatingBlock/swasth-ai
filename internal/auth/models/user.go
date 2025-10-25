@@ -12,7 +12,7 @@ import (
 type User struct {
 	bun.BaseModel `bun:"table:users"`
 
-	ID        uuid.UUID `bun:",pk,type:uuid,default:gen_random_uuid()" json:"id" validate:"required,uuid4"`
+	ID        uuid.UUID `bun:",pk,type:uuid,default:uuid_generate_v4()" json:"id" validate:"required,uuid4"`
 	Phone     string    `bun:",unique,notnull" json:"phone" validate:"required,e164"` // e164 = +919876543210 format
 	FirstName string    `bun:",notnull" json:"first_name" validate:"required,alpha,min=2,max=50"`
 	LastName  string    `bun:",notnull" json:"last_name" validate:"required,alpha,min=2,max=50"`
@@ -29,26 +29,30 @@ func (u *User) PrepareCreate() {
 }
 
 type UserWithToken struct {
-	User         *User
-	Token        string
-	RefreshToken string
+	User         *User  `json:"user" validate:"required"`
+	Token        string `json:"token" validate:"required,jwt"`
+	RefreshToken string `json:"refresh_token" validate:"required,jwt"`
 }
 
 type Tokens struct {
-	Token        string
-	RefreshToken string
-	ExpiresIn    int
+	Token        string `json:"token" validate:"required,jwt"`
+	RefreshToken string `json:"refresh_token" validate:"required,jwt"`
+	ExpiresIn    int    `json:"expires_in" validate:"required,gt=0"`
 }
 
 type UpdateProfileInput struct {
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Language  string `json:"language"`
+	FirstName string `json:"first_name" validate:"required,min=2,max=50"`
+	LastName  string `json:"last_name" validate:"omitempty,min=2,max=50"`
+	Language  string `json:"language" validate:"required,alpha,len=2"`
 }
 
 type RegisterUserInput struct {
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Language  string `json:"language"`
-	Phone     string `json:"phone"`
+	FirstName string `json:"first_name" validate:"required,min=2,max=50"`
+	LastName  string `json:"last_name" validate:"required,min=2,max=50"`
+	Language  string `json:"language" validate:"required,alpha,len=2"`
+	Phone     string `json:"phone" validate:"required,e164"`
+}
+
+type SendOTPInput struct {
+	Phone string `json:"phone" validate:"required,e164"`
 }

@@ -4,6 +4,7 @@ package repository_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"os"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"swasthAI/internal/auth/models"
 	"swasthAI/internal/auth/repository"
+	"swasthAI/pkg/domain_errors"
 	"swasthAI/pkg/logger"
 
 	"github.com/stretchr/testify/assert"
@@ -120,9 +122,17 @@ func TestUserRepository_Integration(t *testing.T) {
 		resetDB(t)
 
 		found, err := repo.FindByPhone(ctx, "+919999999999")
-		require.NoError(t, err)
-		assert.Nil(t, found) // Should be nil, not error
+		require.Error(t, err)                                         // Expect an error
+		assert.Nil(t, found)                                          // User should be nil
+		assert.True(t, errors.Is(err, domain_errors.ErrUserNotFound)) // Specific error check
 	})
+	// t.Run("FindByPhone - Not Found", func(t *testing.T) {
+	// 	resetDB(t)
+
+	// 	found, err := repo.FindByPhone(ctx, "+919999999999")
+	// 	require.NoError(t, err)
+	// 	assert.Nil(t, found) // Should be nil, not error
+	// })
 
 	t.Run("FindByID", func(t *testing.T) {
 		resetDB(t)

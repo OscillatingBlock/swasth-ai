@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"net/http"
+	"strings"
 )
 
 type Handler struct {
@@ -25,7 +26,7 @@ func NewHandler(uc *usecase.AuthUsecase, logger *logger.Logger, cfg *config.Conf
 }
 
 func (h *Handler) SendOTP(c echo.Context) error {
-	var user models.User
+	var user models.SendOTPInput
 	if err := utils.ReadRequest(c, &user); err != nil {
 		h.logger.Error(err)
 		return http_errors.Send(c, appErrors.ErrInvalidInput)
@@ -39,7 +40,10 @@ func (h *Handler) SendOTP(c echo.Context) error {
 		}
 		return http_errors.Send(c, appErrors.ErrInternal)
 	}
-	return c.JSON(200, nil)
+	return c.JSON(http.StatusOK, map[string]string{
+		"message":     "OTP sent to " + user.Phone,
+		"retry_after": "60",
+	})
 }
 
 func (h *Handler) Register(c echo.Context) error {
@@ -78,7 +82,7 @@ func (h *Handler) VerifyOTP(c echo.Context) error {
 		return http_errors.Send(c, appErrors.ErrInvalidInput)
 	}
 
-	userWithToken, ok, err := h.uc.VerifyOTP(c.Request().Context(), input.Phone, input.OTP)
+	userWithToken, registered, err := h.uc.VerifyOTP(c.Request().Context(), input.Phone, input.OTP)
 	if err != nil {
 		h.logger.Error("failed to verify otp", "error", err)
 
@@ -88,26 +92,65 @@ func (h *Handler) VerifyOTP(c echo.Context) error {
 		return http_errors.Send(c, appErrors.ErrDatabase)
 	}
 
-	if !ok {
-		h.logger.Error("failed to verify otp")
-		return http_errors.Send(c, appErrors.ErrInvalidInput)
+	// Success: User exists → Login
+	if registered {
+		return c.JSON(http.StatusOK, userWithToken)
 	}
 
-	return c.JSON(http.StatusOK, userWithToken)
+	// Success: User does not exist → Redirect to register
+	return c.JSON(http.StatusOK, map[string]any{
+		"registered": false,
+		"message":    "Complete registration",
+	})
 }
 
+// func (h *Handler) RefreshToken(c echo.Context) error {
+// 	token, err := h.uc.RefreshToken(c.Request().Context(), c.Request().Header.Get("Authorization"))
+// 	if err != nil {
+// 		h.logger.Error("failed to refresh token", "error", err)
+
+// 		if appErr, ok := err.(*appErrors.AppError); ok {
+// 			return http_errors.Send(c, appErr)
+// 		}
+// 		return http_errors.Send(c, appErrors.ErrInternal)
+// 	}
+
+// 	return c.JSON(http.StatusOK, map[string]any{
+// 		"token":         token.Token,
+// 		"refresh_token": token.RefreshToken,
+// 		"expires_in":    86400,
+// 	})
+// }
+
 func (h *Handler) RefreshToken(c echo.Context) error {
-	token, err := h.uc.RefreshToken(c.Request().Context(), c.Request().Header.Get("Authorization"))
+	authHeader := c.Request().Header.Get("Authorization")
+	if authHeader == "" {
+		h.logger.Error("missing Authorization header")
+		return http_errors.Send(c, appErrors.ErrUnauthorized)
+	}
+
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		h.logger.Error("invalid Authorization header format")
+		return http_errors.Send(c, appErrors.ErrUnauthorized)
+	}
+
+	refreshToken := parts[1]
+
+	token, err := h.uc.RefreshToken(c.Request().Context(), refreshToken)
 	if err != nil {
 		h.logger.Error("failed to refresh token", "error", err)
-
 		if appErr, ok := err.(*appErrors.AppError); ok {
 			return http_errors.Send(c, appErr)
 		}
 		return http_errors.Send(c, appErrors.ErrInternal)
 	}
 
-	return c.JSON(http.StatusOK, token)
+	return c.JSON(http.StatusOK, map[string]any{
+		"token":         token.Token,
+		"refresh_token": token.RefreshToken,
+		"expires_in":    86400,
+	})
 }
 
 func (h *Handler) GetProfile(c echo.Context) error {
@@ -122,4 +165,28 @@ func (h *Handler) GetProfile(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, user)
+}
+
+func (h *Handler) UpdateProfile(c echo.Context) error {
+	var input models.UpdateProfileInput
+	if err := utils.ReadRequest(c, &input); err != nil {
+		h.logger.Error("failed to read input", "error", err)
+		if appErr, ok := err.(*appErrors.AppError); ok {
+			return http_errors.Send(c, appErr)
+		}
+		return http_errors.Send(c, appErrors.ErrInternal)
+	}
+
+	_, err := h.uc.UpdateProfile(c.Request().Context(), &input)
+	if err != nil {
+		h.logger.Error("failed to update profile", "error", err)
+		if appErr, ok := err.(*appErrors.AppError); ok {
+			return http_errors.Send(c, appErr)
+		}
+		return http_errors.Send(c, appErrors.ErrInternal)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "Profile updated successfully",
+	})
 }

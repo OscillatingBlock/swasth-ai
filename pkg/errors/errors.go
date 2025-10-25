@@ -70,5 +70,8 @@ var (
 	// 503 Service Unavailable
 	ErrServiceUnavailable = New("ERR_SERVICE_UNAVAILABLE", "Service temporarily unavailable", http.StatusServiceUnavailable, nil)
 
-	ErrJWTGeneration = New("ERR_JWT_GENERATION", "Failed to generate JWT", http.StatusInternalServerError, nil)
+	ErrJWTGeneration    = New("ERR_JWT_GENERATION", "Failed to generate JWT", http.StatusInternalServerError, nil)
+	ErrInvalidJWTToken  = New("ERR_INVALID_JWT_TOKEN", "Invalid JWT token", http.StatusUnauthorized, nil)
+	ErrJWTInvalidClaims = New("ERR_JWT_INVALID_CLAIM", "Invalid JWT claim", http.StatusUnauthorized, nil)
+	ErrJWTExpired       = New("ERR_JWT_EXPIRED", "JWT token expired", http.StatusUnauthorized, nil)
 )

@@ -7,11 +7,11 @@ import (
 )
 
 type Config struct {
-	Server     Server
-	Db         Database
-	JWT        JWT
-	SMS        SMS
-	Redis      RedisConfig
+	Server Server
+	Db     Database
+	JWT    JWT
+	/* SMS        SMS */
+	/* Redis      RedisConfig */
 	Bun        BunConfig
 	LoggerMode LoggerMode
 }
@@ -20,9 +20,14 @@ type Server struct {
 	Port        string
 	Environment string
 }
+
 type Database struct {
-	PostgresDSN string
-	RedisAddr   string
+	Host     string
+	Port     int
+	User     string
+	Password string
+	Name     string
+	SSLMode  string
 }
 type JWT struct {
 	Secret    string
@@ -53,7 +58,8 @@ func LoadConfig(filename string) (*viper.Viper, error) {
 	v := viper.New()
 
 	v.SetConfigName(filename)
-	v.AddConfigPath(".")
+	v.SetConfigType("yaml")
+	v.AddConfigPath("config")
 	v.AutomaticEnv()
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
