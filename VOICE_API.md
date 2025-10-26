@@ -64,6 +64,8 @@ Start a new voice chat session.
 
 **Request**
 
+Authorization: Bearer <token>
+
 ```json
 {
   "language": "hi",
