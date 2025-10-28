@@ -1,34 +1,64 @@
-package voice
+// internal/voice/models/models.go
+package models
 
 import (
+	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
-type WSVoiceMessage struct {
-	Type     string `json:"type"`
-	Data     string `json:"data"`
-	Language string `json:"language"`
-	Mode     string `json:"mode"`
+type StartSessionRequest struct {
+	Language    string `json:"language"`
+	Model       string `json:"model"`
+	SessionType string `json:"session_type"`
 }
 
-type TranscribeResponse struct {
-	Transcription string    `json:"transcription"`
-	Language      string    `json:"language"`
-	Confidence    float64   `json:"confidence"`
-	Duration      time.Time `json:"duration"` // seconds
+type StartSessionResponse struct {
+	SessionID string `json:"session_id"`
+	WSURL     string `json:"ws_url"`
 }
 
-type AnalyzeRequest struct {
-	Query    string  `json:"query" validate:"required"`
-	Language string  `json:"language" validate:"required,oneof=hi en ta te bn mr"`
-	Mode     *string `json:"mode,omitempty"` // optional: "offline" or "online"
+type EndSessionRequest struct {
+	SessionID string `json:"session_id"`
 }
 
-type AnalyzeResponse struct {
-	Advice            string    `json:"advice"`
-	Severity          string    `json:"severity"` // "low", "moderate", "high"
-	FollowupQuestions []string  `json:"followup_questions"`
-	DoctorReferral    bool      `json:"doctor_referral"`
-	Language          string    `json:"language"`
-	GeneratedAt       time.Time `json:"generated_at"`
+// Internal session state
+type VoiceSession struct {
+	SessionID string
+	UserID    string
+	Language  string
+	Model     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	AiWSConn  *websocket.Conn
+	Status    string
+}
+
+// WebSocket transport
+type WSMessage struct {
+	Type string `json:"type"`
+}
+
+// Client → Server
+type TextMessageInput struct {
+	Content string `json:"content,omitempty"`
+}
+
+type EndOfInput struct{}
+
+// Server → Client
+type Transcript struct {
+	Text string `json:"text,omitempty"`
+}
+
+type AIText struct {
+	Text string `json:"ai_text,omitempty"`
+}
+
+type EndOfResponse struct{}
+
+type SessionStrore struct {
+	sessions map[string]*VoiceSession
+	mu       sync.RWMutex
 }

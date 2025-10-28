@@ -33,6 +33,11 @@ var (
 	ErrAudioTooLarge       = errors.New("VOICE_AUDIO_TOO_LARGE", "Audio file must be less than 10MB", http.StatusRequestEntityTooLarge, nil)
 	ErrUnsupportedLanguage = errors.New("VOICE_UNSUPPORTED_LANGUAGE", "Language not supported for voice analysis", http.StatusUnprocessableEntity, nil)
 	ErrTranscriptionFailed = errors.New("VOICE_TRANSCRIPTION_FAILED", "Failed to transcribe audio", http.StatusInternalServerError, nil)
+	ErrAIConnectionFailed  = errors.New("AI_CONNECTION_FAILED", "AI connection failed", http.StatusInternalServerError, nil)
+)
+
+var (
+	ErrSessionNotFound = errors.New("SESSION_NOT_FOUND", "Session not found", http.StatusNotFound, nil)
 )
 
 // Vision Domain Errors
